@@ -574,15 +574,22 @@ function downloadFileAdapter(config) {
     }
 
     // 发起请求
-    request({
+    const downloadFileTask = request({
       method: 'GET',
       url: fullPath,
-      filePath: config.filePath,
+      filePath: config.filePath || '',
       header: requestHeader,
       timeout: config.timeout,
       success: res => { onsuccess && onsuccess(res) },
       fail: res => { onfail && onfail(res) },
       complete: () => { oncomplete && oncomplete() },
+    })
+
+    downloadFileTask.onProgressUpdate(res => {
+      console.log('下载进度', res)
+      console.log('下载进度', res.progress)
+      console.log('已经下载的数据长度', res.totalBytesWritten)
+      console.log('预期需要下载的数据总长度', res.totalBytesExpectedToWrite)
     })
   })
 }
@@ -906,12 +913,12 @@ Axios.prototype.upload = function(url, filePath, name, config) {
     throw Error(`[${name}] wx.uploadFile 需要传入 name filePath 属性！`)
   }
 
-  return this.request(config || {}, {
+  return this.request(helpers.mergeConfig(config || {}, {
     method: 'POST',
     url: url || (config || {}).url,
     filePath: filePath,
     name: name
-  })
+  }))
 }
 
 /**
@@ -932,11 +939,11 @@ Axios.prototype.download = function(url, config) {
     url = config.url || ''
   }
 
-  return this.request(config || {}, {
+  return this.request(helpers.mergeConfig(config || {}, {
     method: 'GET',
     url: url,
     filePath: ((config || {}).filePath) || ''
-  })
+  }))
 }
 
 /**
