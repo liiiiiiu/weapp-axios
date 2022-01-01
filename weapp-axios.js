@@ -6,28 +6,28 @@
  *
  * wx.request API
  * https://developers.weixin.qq.com/miniprogram/dev/api/network/request/wx.request.html
- * 
+ *
  * wx.uploadFile API
  * https://developers.weixin.qq.com/miniprogram/dev/api/network/upload/wx.uploadFile.html
- * 
+ *
  * wx.downloadFile API
  * https://developers.weixin.qq.com/miniprogram/dev/api/network/download/wx.downloadFile.html
- * 
+ *
  * Axios API
  * http://www.axios-js.com/zh-cn/docs/#axios
  */
 
 /**
  * @example
- * 
+ *
  * 向axios传递相关配置来创建请求
  * axios(config)
- * 
+ *
  * 发起 wx.request 请求（默认为GET请求）
- * 
+ *
  * axios('/user/12345')
  * axios({ method: 'post', url: '/user/12345', data: { firstName: 'Fred' } })
- * 
+ *
  * 使用别名
  * axios.request(config)
  * axios.get(url[, data[, config]])
@@ -37,29 +37,47 @@
  * axios.post(url[, data[, config]])
  * axios.put(url[, data[, config]])
  * axios.patch(url[, data[, config]])
- * 
+ *
  * 发起 wx.uploadFile 请求
- * 
+ *
  * 传入 name 以及 filePath 参数会自动发起 wx.uploadFile 请求
  * axios({ url: 'www.abc.com', name: 'name', filePath: 'filePath' })
- * 
+ *
  * 使用别名
- * axiso.upload('www.abc.com', 'filePath', 'name', {})
- * axiso.upload({ url: 'www.abc.com', filePath: 'filePath', name: 'name' })
- * 
+ * axios.upload('www.abc.com', 'filePath', 'name', {})
+ * axios.upload({ url: 'www.abc.com', filePath: 'filePath', name: 'name' })
+ *
  * 发起 wx.downloadFile 请求
- * 
+ *
  * 传入 filePath 参数会自动发起 wx.downloadFile 请求（wx.downloadFile中的 filePath 为非必填项，可传入空值）
  * axios({ url: 'www.abc.com', filePath: '' })
- * 
+ *
  * 使用别名
- * axiso.download('www.abc.com', 'filePath', 'name', {})
- * axiso.download({ url: 'www.abc.com', filePath: 'filePath', name: 'name' })
+ * axios.download('www.abc.com', 'filePath', 'name', {})
+ * axios.download({ url: 'www.abc.com', filePath: 'filePath', name: 'name' })
  */
 
+// TODO
+// 进度、停止回调
+// websocket
+
 const name = 'Weapp-Axios'
+const root = typeof globalThis === 'object' && globalThis !== null && globalThis.Object === Object && globalThis
 const objProto = Object.prototype
 const arrProto = Array.prototype
+
+if (!objProto.hasOwnProperty.call(root, 'wx')) {
+  throw `[${name}] 仅支持在微信小程序环境中运行！`
+}
+
+const wx = Object.create(root.wx)
+
+// 小程序帐号信息
+// https://developers.weixin.qq.com/miniprogram/dev/api/open-api/account-info/wx.getAccountInfoSync.html#%E8%BF%94%E5%9B%9E%E5%80%BC
+const envVersion = wx.getAccountInfoSync().miniProgram.envVersion
+const isDevelop = envVersion === 'develop'
+const isTrial = envVersion === 'trial'
+const isRelease = envVersion === 'release'
 
 // 匹配头部的斜杠
 const reHeadSlash = /^\/+/
@@ -84,28 +102,28 @@ const DEFAULT_HEADER = {
 const utils = {
   /**
    * 检查value是否为可迭代的数组类型
-   * 
-   * @param {*} value 
+   *
+   * @param {*} value
    * @returns {Boolean} true or false
-   * 
+   *
    * @example
-   * 
+   *
    * [1, 2, 3] // true
    * '123' // true
    * arguments // true
    */
   isArrayLike: function isArrayLike(value) {
-    return value != null && typeof value !== 'function' && objProto.hasOwnProperty.call(value, 'length')
+    return value !== null && typeof value !== 'function' && objProto.hasOwnProperty.call(value, 'length')
   },
 
   /**
    * 检查value是否为普通对象
-   * 
-   * @param {*} value 
+   *
+   * @param {*} value
    * @returns {Boolean} true or false
-   * 
+   *
    * @example
-   * 
+   *
    * {a: 1} // true
    * ['a', 1] // false
    * function() {} // false
@@ -120,12 +138,12 @@ const utils = {
 
   /**
    * 检查value是否为字符串类型
-   * 
-   * @param {*} value 
+   *
+   * @param {*} value
    * @returns {Boolean} true or false
-   * 
+   *
    * @example
-   * 
+   *
    * 'abc' // true
    * new String('abc') // true
    */
@@ -136,7 +154,7 @@ const utils = {
 
   /**
    * 验证 HTTP 状态码
-   * 
+   *
    * @param {Number} statusCode 状态码
    * @returns {Boolean} true or false
    */
@@ -146,12 +164,12 @@ const utils = {
 
   /**
    * 获取value的数据类型
-   * 
+   *
    * @param {*} value
    * @returns {Strint} '[Object ?]'
    */
-  getTag: function(value) {
-    if (value == null) {
+  getTag: function getTag(value) {
+    if (value === null) {
       return value === undefined ? '[object Undefined]' : '[object Null]'
     }
     return objProto.toString.call(value)
@@ -160,7 +178,7 @@ const utils = {
   /**
    * 合并对象
    * 如果有相同键名，后面的覆盖前面的
-   * 
+   *
    * @returns {Object} 合并后的对象
    */
   merge: function merge() {
@@ -189,12 +207,12 @@ const utils = {
   /**
    * 迭代函数
    * 可遍历数组/类数组/对象
-   * 
-   * @param {Array|Object} collection 
+   *
+   * @param {Array|Object} collection
    * @returns {Array|Object} collection
    */
   each: function each(collection, iteratee) {
-    if (collection == null) {
+    if (collection === null) {
       return collection
     }
 
@@ -216,7 +234,7 @@ const utils = {
 
   /**
    * 迭代对象
-   * 
+   *
    * @param {Object} object 需要遍历的对象
    * @param {Function} iteratee 迭代函数
    * @returns {Object} object
@@ -244,9 +262,9 @@ const helpers = {
    * 合并配置对象
    * config2合并至config1
    * 键名相同，config2的值覆盖config1的值
-   * 
-   * @param {Object} config1 
-   * @param {Object} config2 
+   *
+   * @param {Object} config1
+   * @param {Object} config2
    * @returns {Object} config 合并后的配置对象
    */
   mergeConfig: function mergeConfig(config1, config2) {
@@ -256,7 +274,7 @@ const helpers = {
 
   /**
    * 获得接口认证方式
-   * 
+   *
    * @param {Object} config 配置对象
    * @returns {String} 返回认证方式
    */
@@ -283,23 +301,24 @@ const helpers = {
   /**
    * 判断一个地址是否为绝对地址
    * 如果一个地址以"<scheme>://" or "//"开头，则代表它是一个绝对地址
-   * 
+   *
    * @param {String} url
+   * @returns {Boolean} true or false
    */
   isAbsoluteURL(url) {
     return reAbsoluteURL.test(url)
   },
-  
+
   /**
    * 地址拼接
-   * 
+   *
    * @param {String} url1
    * @param {String} url2
    * @returns {String} url 拼接后的新地址 /a/b/c/ + /x/y/z => /a/b/c/x/y/z
    */
   combineURLs: function combineURLs(url1, url2) {
     if (!url1 || !url2) return ''
-  
+
     url1 = url1 + ''
     url2 = url2 + ''
 
@@ -308,11 +327,11 @@ const helpers = {
 
   /**
    * 构建URL地址参数
-   * 
+   *
    * @param {String} url 请求地址
    * @param {Object|String} params 请求参数
    * @returns {String} 带参数的URL地址
-   * 
+   *
    * 支持以下两种形式的参数结构
    * /a/b/c + /x/y/z => /a/b/c/x/y/z
    * /a/b/c + {x:1, y: 2, z: 3} => /a/b/c?x=1&y=2&z=3
@@ -339,7 +358,7 @@ const helpers = {
 
   /**
    * 构建完整的URL地址
-   * 
+   *
    * @param {String} baseURL 基地址
    * @param {String} url 请求地址
    * @returns {String} 完整的URL地址 https://www.xxx.com/ + /a/b/c => https://www.xxx.com/a/b/c
@@ -349,28 +368,29 @@ const helpers = {
 
     baseURL = baseURL + ''
     url = url + ''
-    
+
     return helpers.isAbsoluteURL(url)
             ? url
-            : helpers.combineURLs(baseURL, url) 
+            : helpers.combineURLs(baseURL, url)
   },
 
   // 打印已完成的请求
   printFulfilledRequest: function printFulfilledRequest(config, response) {
     if (!config) return undefined
 
-    console.log('%c↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓', 'color: #67c23a')
+    const print = console.log
+    print('%c↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓', 'color: #67c23a')
     if (!utils.validateStatusCode(response.statusCode)) {
-      console.log(`%cstatusCode：${response.statusCode}`, 'color: #fa5151;font-size:21px;')
+      print(`%cstatusCode：${response.statusCode}`, 'color: #fa5151;font-size:21px;')
     }
-    console.log('=> 请求路径：', config.url)
-    console.log('=> 请求方式：', config.method)
+    print('=> 请求路径：', config.url)
+    print('=> 请求方式：', config.method)
     if (Object.keys(config.data).length > 0) {
-      console.log('=> 请求参数：', config.data || {})
+      print('=> 请求参数：', config.data || {})
     }
-    console.log('=> 响应结果：', response || {})
-    console.log('=> 请求时间：', new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString())
-    console.log('%c↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑', 'color: #67c23a')
+    print('=> 响应结果：', response || {})
+    print('=> 请求时间：', new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString())
+    print('%c↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑', 'color: #67c23a')
   },
 }
 
@@ -385,7 +405,7 @@ function InterceptorManager() {
 
 /**
  * 将拦截器推入栈中
- * 
+ *
  * @param {Function} fulfilled 处理 Promise 返回 then 的逻辑
  * @param {Function} rejected 处理 Promise 返回 reject 的逻辑
  * @param {Object} options 额外处理的参数
@@ -401,7 +421,7 @@ InterceptorManager.prototype.use = function use(fulfilled, rejected, options) {
 
 /**
  * 删除拦截器
- * 
+ *
  * @param {*} id 拦截器ID
  */
 InterceptorManager.prototype.eject = function eject(id) {
@@ -412,7 +432,7 @@ InterceptorManager.prototype.eject = function eject(id) {
 
 /**
  * 遍历已注册的拦截器
- * 
+ *
  * @param {Function} fn 处理拦截器的方法
  */
 InterceptorManager.prototype.forEach = function forEach(fn) {
@@ -428,7 +448,7 @@ InterceptorManager.prototype.forEach = function forEach(fn) {
 
 /**
  * wx.request请求适配器
- * 
+ *
  * @param {Object} config 配置对象
  */
 function requestAdapter(config) {
@@ -485,7 +505,7 @@ function requestAdapter(config) {
 
 /**
  * wx.uploadFile 请求适配器
- * 
+ *
  * @param {Object} config 配置对象
  */
 function uploadFileAdapter(config) {
@@ -516,7 +536,7 @@ function uploadFileAdapter(config) {
     if (config.auth || config.token) {
       requestHeader.Authorization = helpers.getAuthorization(config)
     }
-    
+
     // wx.uploadFile 的 content-type 必须为 multipart/form-data
     requestHeader['content-type'] = 'multipart/form-data'
 
@@ -541,7 +561,7 @@ function uploadFileAdapter(config) {
 
 /**
  * wx.downloadFile 请求适配器
- * 
+ *
  * @param {Object} config 配置对象
  */
 function downloadFileAdapter(config) {
@@ -585,6 +605,7 @@ function downloadFileAdapter(config) {
       complete: () => { oncomplete && oncomplete() },
     })
 
+    // TODO
     downloadFileTask.onProgressUpdate(res => {
       console.log('下载进度', res)
       console.log('下载进度', res.progress)
@@ -596,7 +617,7 @@ function downloadFileAdapter(config) {
 
 /**
  * 获取适配器
- * 
+ *
  * @param {Object} config 配置对象
  */
 function getDefaultAdapter(config) {
@@ -646,19 +667,19 @@ const defaults = {
   forcedJSONParsing: true,
 
   // 打印已完成的请求
-  printFulfilledRequest: true,
+  printFulfilledRequest: !isRelease,
 
   // 本地日志记录
-  localLog: true,
-  logManager: new LogManager(),
+  openLocalLogger: !isRelease,
+  logManager: !isRelease ? new LogManager() : undefined,
 
   // 返回的数据格式
   dataType: 'json',
-  
+
   // 响应的数据类型 text/arraybuffer
   responseType: 'text',
 
-  // 开启 http2	
+  // 开启 http2
   enableHttp2: false,
 
   // 开启 quic
@@ -756,7 +777,7 @@ LogManager.prototype.popleft = function popleft() {
 
 /**
  * Axios构造函数
- * 
+ *
  * @param {Object} instanceConfig 实例化时传入的配置对象
  */
 function Axios(instanceConfig) {
@@ -770,7 +791,7 @@ function Axios(instanceConfig) {
 /**
  * 主请求函数
  * wx.reqeust\wx.uploadFile\wx.downloadFile 请求都通过该函数进行转发
- * 
+ *
  * @param {Object} config 每条请求独立的配置对象
  */
 Axios.prototype.request = function request(config) {
@@ -870,14 +891,14 @@ utils.each(methods, function axiosRequestMethod(method) {
 
 /**
  * wx.uploadFile 请求别名
- * 
+ *
  * @param {*} url 请求地址
  * @param {*} config 配置对象
- * 
+ *
  * @example
- * 
- * axiso.upload('www.abc.com', 'filePath', 'name', {})
- * axiso.upload({ url: 'www.abc.com', filePath: 'filePath', name: 'name' })
+ *
+ * axios.upload('www.abc.com', 'filePath', 'name', {})
+ * axios.upload({ url: 'www.abc.com', filePath: 'filePath', name: 'name' })
  */
 Axios.prototype.upload = function(url, filePath, name, config) {
   // 兼容参数类型
@@ -923,14 +944,14 @@ Axios.prototype.upload = function(url, filePath, name, config) {
 
 /**
  * wx.downloadFile 请求别名
- * 
+ *
  * @param {*} url 请求地址
  * @param {*} config 配置对象
- * 
+ *
  * @example
- * 
- * axiso.download('www.abc.com')
- * axiso.download({ url: 'www.abc.com' })
+ *
+ * axios.download('www.abc.com')
+ * axios.download({ url: 'www.abc.com' })
  */
 Axios.prototype.download = function(url, config) {
   // 兼容参数类型
@@ -948,7 +969,7 @@ Axios.prototype.download = function(url, config) {
 
 /**
  * 派发请求
- * 
+ *
  * @param {Object} config 配置对象
  * @returns {Promise} 返回经过适配器处理后的请求Promise结果
  */
@@ -998,7 +1019,7 @@ function dispatchRequest(config) {
     }
 
     // 本地日志记录
-    if (config.localLog) {
+    if (config.openLocalLogger) {
       try {
         config.logManager.set(config, response)
       } catch (err) {}
@@ -1030,7 +1051,7 @@ const ProxyAxios = (function proxyAxios() {
 
 /**
  * 实例化Axios
- * 
+ *
  * @param {Object} defaultConfig 
  * @returns {Object} instance
  */
