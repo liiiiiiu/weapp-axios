@@ -1195,7 +1195,6 @@ function dispatchRequest(config) {
 
   let adapter = config.adapter(config)
   config.adapterName = adapter.adapterName
-  console.log('adapter', adapter, config)
   return adapter.adapter(config).then(function onAdapterResolve(response) {
     // 如果配置了forcedJSONParsing，响应data为JSON字符串时自动解析
     if (utils.validateStatusCode(response.statusCode) && config.forcedJSONParsing) {
@@ -1272,6 +1271,26 @@ function createInstance(defaultConfig) {
 }
 
 let axios = createInstance(defaults)
+
+/**
+ * Promise.all 并行执行一系列异步操作，返回结果集
+ *
+ * @param {Array[Promise]} promises
+ * @returns Array[Promise] 结果集
+ */
+axios.all = function all(promises) {
+  return Promise.all(promises)
+}
+
+/**
+ * Promise.race 哪个结果获得的快，就返回那个结果
+ *
+ * @param {Array[Promise]} promises
+ * @returns Promise 最快获得的那个结果
+ */
+axios.race = function race(promises) {
+  return Promise.race(promises)
+}
 
 // 暴露Axios类，提供类继承等功能
 axios.Axios = Axios
