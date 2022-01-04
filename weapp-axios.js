@@ -534,9 +534,6 @@ function requestAdapter(config) {
     const requestHeader = config.header || {}
 
     const request = wx.request
-    const successCallback = getAdapterCallback('success')
-    const failCallback = getAdapterCallback('fail')
-    const completeCallback = getAdapterCallback('complete')
 
     // 路径、Authorization不同适配器会有部分差异，
     // 不在dispatchRequest函数中进行处理
@@ -567,9 +564,9 @@ function requestAdapter(config) {
       enableCache: config.enableCache,
       enableHttp2: config.enableHttp2,
       enableQuic: config.enableQuic,
-      success: res => { successCallback(res, resolve, reject) },
-      fail: res => { failCallback(res, resolve, reject) },
-      complete: () => { completeCallback() },
+      success: res => { adapterCallbackSettle(resolve, res) },
+      fail: err => { adapterCallbackSettle(reject, err) },
+      complete: () => { adapterCallbackSettle() },
     })
 
     // 请求任务
@@ -591,9 +588,6 @@ function uploadFileAdapter(config) {
     const requestHeader = config.header || {}
 
     const request = wx.uploadFile
-    const successCallback = getAdapterCallback('success')
-    const failCallback = getAdapterCallback('fail')
-    const completeCallback = getAdapterCallback('complete')
 
     // 构建完整路径
     let fullPath = config.baseURL
@@ -624,9 +618,9 @@ function uploadFileAdapter(config) {
       filePath: config.filePath,
       header: requestHeader,
       timeout: config.timeout,
-      success: res => { successCallback(res, resolve, reject) },
-      fail: res => { failCallback(res, resolve, reject) },
-      complete: () => { completeCallback() },
+      success: res => { adapterCallbackSettle(resolve, res) },
+      fail: err => { adapterCallbackSettle(reject, err) },
+      complete: () => { adapterCallbackSettle() },
     })
 
     // 请求任务
@@ -648,9 +642,6 @@ function downloadFileAdapter(config) {
     const requestHeader = config.header || {}
 
     const request = wx.downloadFile
-    const successCallback = getAdapterCallback('success')
-    const failCallback = getAdapterCallback('fail')
-    const completeCallback = getAdapterCallback('complete')
 
     // 构建完整路径
     let fullPath = config.baseURL
@@ -673,9 +664,9 @@ function downloadFileAdapter(config) {
       filePath: config.filePath || '',
       header: requestHeader,
       timeout: config.timeout,
-      success: res => { successCallback(res, resolve, reject) },
-      fail: res => { failCallback(res, resolve, reject) },
-      complete: () => { completeCallback() },
+      success: res => { adapterCallbackSettle(resolve, res) },
+      fail: err => { adapterCallbackSettle(reject, err) },
+      complete: () => { adapterCallbackSettle() },
     })
 
     // 请求任务
@@ -697,9 +688,6 @@ function connectSocketAdapter(config) {
     const requestHeader = config.header || {}
 
     const request = wx.connectSocket
-    const successCallback = getAdapterCallback('success')
-    const failCallback = getAdapterCallback('fail')
-    const completeCallback = getAdapterCallback('complete')
 
     // 构建完整路径
     let fullPath = config.baseURL
@@ -723,9 +711,9 @@ function connectSocketAdapter(config) {
       tcpNoDelay: config.tcpNoDelay || false,
       perMessageDeflate: config.perMessageDeflate || false,
       timeout: config.timeout,
-      success: res => { successCallback(res, resolve, reject) },
-      fail: res => { failCallback(res, resolve, reject) },
-      complete: () => { completeCallback() },
+      success: res => { adapterCallbackSettle(resolve, res) },
+      fail: err => { adapterCallbackSettle(reject, err) },
+      complete: () => { adapterCallbackSettle() },
     })
 
     // 请求任务
@@ -736,17 +724,10 @@ function connectSocketAdapter(config) {
 }
 
 // 获取请求适配器调用成功、失败、完成后的回调事件
-function getAdapterCallback(event) {
-  if (event === 'complete') {
-    return noop
-  }
-  return function(res, resolve, reject) {
-    if (event === 'success') {
-      resolve(res)
-    } else if (event === 'fail') {
-      reject(res)
-    }
-  }
+function adapterCallbackSettle() {
+  arguments.length < 2
+    ? noop()
+    : arrProto.shift.call(arguments).call(this, arrProto.shift.call(arguments))
 }
 
 /**
@@ -773,13 +754,13 @@ function getAdapterTask(requestTask, configTask) {
   const legalCallbackTasks = ['onProgressUpdate', 'offProgressUpdate', 'onHeadersReceived', 'offHeadersReceived', 'onChunkReceived', 'offChunkReceived', 'onOpen', 'onMessage', 'onError', 'onClose']
 
   utils.each(configTask, function setRequestTask(value, key) {
-    if (utils.isFunction(value)) {
+    if (utils.isFunction(value) && configTask[key]) {
       if (legalCallbackTasks.includes(key)) {
         requestTask[key](function requestTaskCallback(res) {
-          configTask[key] && configTask[key](res, requestTask)
+          configTask[key].apply(this, [res, requestTask])
         })
       } else {
-        configTask[key](requestTask)
+        configTask[key].call(this, requestTask)
       }
     }
   })
