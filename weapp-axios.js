@@ -44,8 +44,8 @@
  * axios({ url: 'www.abc.com', name: 'name', filePath: 'filePath' })
  *
  * 使用别名
- * axios.upload('www.abc.com', 'filePath', 'name', {})
- * axios.upload({ url: 'www.abc.com', filePath: 'filePath', name: 'name' })
+ * axios.uploadFile('www.abc.com', 'filePath', 'name', {...config})
+ * axios.uploadFile({ url: 'www.abc.com', filePath: 'filePath', name: 'name', ...config })
  *
  * 发起 wx.downloadFile 请求
  *
@@ -53,18 +53,47 @@
  * axios({ url: 'www.abc.com', filePath: '' })
  *
  * 使用别名
- * axios.download('www.abc.com', 'filePath', 'name', {})
- * axios.download({ url: 'www.abc.com', filePath: 'filePath', name: 'name' })
+ * axios.downloadFile('www.abc.com', 'filePath', 'name', {...config})
+ * axios.downloadFile({ url: 'www.abc.com', filePath: 'filePath', name: 'name', ...config })
+ * 
+ * 发起 wx.connectSocket 请求
+ * axios.connectSocket('www.abc.com', {...config})
+ * axios.connectSocket({ url: 'www.abc.com', ...config })
+ * 
+ * 
+ * 处理 Task 任务对象
+ * wx.request\wx.uploadFile\wx.downloadFile\wx.connectSocket 拥有相同的处理方法
+ * 在 config 内传入包含官方文档内合法Task方法的 task 对象
+ * 
+ * axios.downloadFile({
+ *  url: 'www.abc.com',
+ *  task: {
+ *    // task对象键值命名必须与官方文档Task提供的函数名一致
+ *    onProgressUpdate: (res, task) => {
+ *      // 使用自定义函数接收参数
+ *      yourOnProgressUpdateFun(res, task)
+ *    },
+ *    offProgressUpdate: (res, task) => {
+ *      yourOffProgressUpdateFunc(res, task)
+ *    },
+ *    // 如果不是on监听事件的回调函数，axios传入的是task对象
+ *    abort: task => {
+ *      yourAbortFunc(task)
+ *    },
+ *  },
+ * });
+ * function yourAbortFunc(task) {
+ *  if (true) {
+ *    task.abort()
+ *  }
+ * }
  */
-
-// TODO
-// 进度、停止回调
-// websocket
 
 const name = 'Weapp-Axios'
 const root = typeof globalThis === 'object' && globalThis !== null && globalThis.Object === Object && globalThis
 const objProto = Object.prototype
 const arrProto = Array.prototype
+const noop = function() {}
 
 if (!objProto.hasOwnProperty.call(root, 'wx')) {
   throw `[${name}] 仅支持在微信小程序环境中运行！`
@@ -150,6 +179,16 @@ const utils = {
   isString: function isString(value) {
     const typeOf = typeof value
     return typeOf === 'string' || (typeOf === 'object' && value !== null && !Array.isArray(value) && utils.getTag(value) === '[object String]')
+  },
+
+  /**
+   * 检查value是否为函数类型
+   *
+   * @param {*} value
+   * @returns {Boolean} true or false
+   */
+  isFunction: function isFunction(value) {
+    return typeof value === 'function'
   },
 
   /**
@@ -254,6 +293,36 @@ const utils = {
 
     return object
   },
+
+  // base64编码
+  base64Encode: function base64Encode (str) { // 编码，配合encodeURIComponent使用
+    let c1, c2, c3
+    let base64EncodeChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/="
+    let i = 0, len = str.length, strin = ''
+    while (i < len) {
+      c1 = str.charCodeAt(i++) & 0xff
+      if (i == len) {
+        strin += base64EncodeChars.charAt(c1 >> 2)
+        strin += base64EncodeChars.charAt((c1 & 0x3) << 4)
+        strin += "=="
+        break
+      }
+      c2 = str.charCodeAt(i++)
+      if (i == len) {
+        strin += base64EncodeChars.charAt(c1 >> 2)
+        strin += base64EncodeChars.charAt(((c1 & 0x3) << 4) | ((c2 & 0xF0) >> 4))
+        strin += base64EncodeChars.charAt((c2 & 0xF) << 2)
+        strin += "="
+        break
+      }
+      c3 = str.charCodeAt(i++)
+      strin += base64EncodeChars.charAt(c1 >> 2)
+      strin += base64EncodeChars.charAt(((c1 & 0x3) << 4) | ((c2 & 0xF0) >> 4))
+      strin += base64EncodeChars.charAt(((c2 & 0xF) << 2) | ((c3 & 0xC0) >> 6))
+      strin += base64EncodeChars.charAt(c3 & 0x3F)
+    }
+    return strin
+  },
 }
 
 // 助手函数
@@ -287,7 +356,7 @@ const helpers = {
     if (config.auth) {
       const username = config.auth.username || ''
       const password = config.auth.password ? unescape(encodeURIComponent(config.auth.password)) : ''
-      authorization = 'Basic ' + username + ':' + password
+      authorization = 'Basic ' + utils.base64Encode(username + ':' + password)
     }
 
     // 处理 HTTP Bearer Token
@@ -348,7 +417,9 @@ const helpers = {
       const isExist = !!~url.indexOf('=')
       let suffix = ''
       keys.forEach((key, index) => {
-        suffix += ((!isExist && index === 0 ? '' : '&') + (key + '=' + params[key]))
+        if (!utils.isFunction(params[key])) {
+          suffix += ((!isExist && index === 0 ? '' : '&') + (key + '=' + params[key]))
+        }
       })
       return helpers.combineURLs(url, '?' + suffix)
     } else {
@@ -366,6 +437,8 @@ const helpers = {
   buildFullPath: function buildFullPath(baseURL, url) {
     if (!baseURL) return ''
 
+    if (!url) return baseURL
+
     baseURL = baseURL + ''
     url = url + ''
 
@@ -380,11 +453,13 @@ const helpers = {
 
     const print = console.log
     print('%c↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓', 'color: #67c23a')
-    if (!utils.validateStatusCode(response.statusCode)) {
+    if (response && response.statusCode && !utils.validateStatusCode(response.statusCode)) {
       print(`%cstatusCode：${response.statusCode}`, 'color: #fa5151;font-size:21px;')
     }
-    print('=> 请求路径：', config.url)
-    print('=> 请求方式：', config.method)
+    print('=> 请求路径：', config.url || config.baseURL)
+    if (config.method) {
+      print('=> 请求方式：', config.method)
+    }
     if (Object.keys(config.data).length > 0) {
       print('=> 请求参数：', config.data || {})
     }
@@ -458,26 +533,22 @@ function requestAdapter(config) {
     const requestData = config.data || {}
     const requestHeader = config.header || {}
 
-    function onsuccess(res) {
-      resolve(res)
-    }
-
-    function onfail(err) {
-      reject(err)
-    }
-
-    function oncomplete() {}
-
     const request = wx.request
+    const successCallback = getAdapterCallback('success')
+    const failCallback = getAdapterCallback('fail')
+    const completeCallback = getAdapterCallback('complete')
 
     // 路径、Authorization不同适配器会有部分差异，
     // 不在dispatchRequest函数中进行处理
 
     // 构建完整路径
+    let fullPath = config.baseURL
     if (config.params && config.url) {
       config.url = helpers.buildPathParam(config.url, config.params)
     }
-    const fullPath = helpers.buildFullPath(config.baseURL, config.url)
+    if (config.url) {
+       fullPath = helpers.buildFullPath(config.baseURL, config.url)
+    }
 
     // 进行接口认证
     if (config.auth || config.token) {
@@ -485,7 +556,7 @@ function requestAdapter(config) {
     }
 
     // 发起请求
-    request({
+    const requestTask = request({
       url: fullPath,
       data: requestData.data,
       dataType: config.dataType,
@@ -496,10 +567,15 @@ function requestAdapter(config) {
       enableCache: config.enableCache,
       enableHttp2: config.enableHttp2,
       enableQuic: config.enableQuic,
-      success: res => { onsuccess && onsuccess(res) },
-      fail: res => { onfail && onfail(res) },
-      complete: () => { oncomplete && oncomplete() },
+      success: res => { successCallback(res, resolve, reject) },
+      fail: res => { failCallback(res, resolve, reject) },
+      complete: () => { completeCallback() },
     })
+
+    // 请求任务
+    if (config.task) {
+      getAdapterTask(requestTask, config.task)
+    }
   })
 }
 
@@ -514,23 +590,19 @@ function uploadFileAdapter(config) {
   return new Promise(function dispatchWXUploadFile(resolve, reject) {
     const requestHeader = config.header || {}
 
-    function onsuccess(res) {
-      resolve(res)
-    }
-
-    function onfail(err) {
-      reject(err)
-    }
-
-    function oncomplete() {}
-
     const request = wx.uploadFile
+    const successCallback = getAdapterCallback('success')
+    const failCallback = getAdapterCallback('fail')
+    const completeCallback = getAdapterCallback('complete')
 
     // 构建完整路径
+    let fullPath = config.baseURL
     if (config.params && config.url) {
       config.url = helpers.buildPathParam(config.url, config.params)
     }
-    const fullPath = helpers.buildFullPath(config.baseURL, config.url)
+    if (config.url) {
+       fullPath = helpers.buildFullPath(config.baseURL, config.url)
+    }
 
     // 进行接口认证
     if (config.auth || config.token) {
@@ -545,17 +617,22 @@ function uploadFileAdapter(config) {
     }
 
     // 发起请求
-    request({
+    const requestTask = request({
       method: 'POST',
       url: fullPath,
       name: config.name,
       filePath: config.filePath,
       header: requestHeader,
       timeout: config.timeout,
-      success: res => { onsuccess && onsuccess(res) },
-      fail: res => { onfail && onfail(res) },
-      complete: () => { oncomplete && oncomplete() },
+      success: res => { successCallback(res, resolve, reject) },
+      fail: res => { failCallback(res, resolve, reject) },
+      complete: () => { completeCallback() },
     })
+
+    // 请求任务
+    if (config.task) {
+      getAdapterTask(requestTask, config.task)
+    }
   })
 }
 
@@ -570,23 +647,19 @@ function downloadFileAdapter(config) {
   return new Promise(function dispatchWXDownloadFile(resolve, reject) {
     const requestHeader = config.header || {}
 
-    function onsuccess(res) {
-      resolve(res)
-    }
-
-    function onfail(err) {
-      reject(err)
-    }
-
-    function oncomplete() {}
-
     const request = wx.downloadFile
+    const successCallback = getAdapterCallback('success')
+    const failCallback = getAdapterCallback('fail')
+    const completeCallback = getAdapterCallback('complete')
 
     // 构建完整路径
+    let fullPath = config.baseURL
     if (config.params && config.url) {
       config.url = helpers.buildPathParam(config.url, config.params)
     }
-    const fullPath = helpers.buildFullPath(config.baseURL, config.url)
+    if (config.url) {
+       fullPath = helpers.buildFullPath(config.baseURL, config.url)
+    }
 
     // 进行接口认证
     if (config.auth || config.token) {
@@ -594,24 +667,121 @@ function downloadFileAdapter(config) {
     }
 
     // 发起请求
-    const downloadFileTask = request({
+    const requestTask = request({
       method: 'GET',
       url: fullPath,
       filePath: config.filePath || '',
       header: requestHeader,
       timeout: config.timeout,
-      success: res => { onsuccess && onsuccess(res) },
-      fail: res => { onfail && onfail(res) },
-      complete: () => { oncomplete && oncomplete() },
+      success: res => { successCallback(res, resolve, reject) },
+      fail: res => { failCallback(res, resolve, reject) },
+      complete: () => { completeCallback() },
     })
 
-    // TODO
-    downloadFileTask.onProgressUpdate(res => {
-      console.log('下载进度', res)
-      console.log('下载进度', res.progress)
-      console.log('已经下载的数据长度', res.totalBytesWritten)
-      console.log('预期需要下载的数据总长度', res.totalBytesExpectedToWrite)
+    // 请求任务
+    if (config.task) {
+      getAdapterTask(requestTask, config.task)
+    }
+  })
+}
+
+/**
+ * wx.connectSocket 请求适配器
+ *
+ * @param {Object} config 配置对象
+ */
+function connectSocketAdapter(config) {
+  config = config || {}
+
+  return new Promise(function dispatchWXConnectSocket(resolve, reject) {
+    const requestHeader = config.header || {}
+
+    const request = wx.connectSocket
+    const successCallback = getAdapterCallback('success')
+    const failCallback = getAdapterCallback('fail')
+    const completeCallback = getAdapterCallback('complete')
+
+    // 构建完整路径
+    let fullPath = config.baseURL
+    if (config.params && config.url) {
+      config.url = helpers.buildPathParam(config.url, config.params)
+    }
+    if (config.url) {
+       fullPath = helpers.buildFullPath(config.baseURL, config.url)
+    }
+
+    // 进行接口认证
+    if (config.auth || config.token) {
+      requestHeader.Authorization = helpers.getAuthorization(config)
+    }
+
+    // 发起请求
+    const requestTask = request({
+      url: fullPath,
+      header: requestHeader,
+      protocols: config.protocols,
+      tcpNoDelay: config.tcpNoDelay || false,
+      perMessageDeflate: config.perMessageDeflate || false,
+      timeout: config.timeout,
+      success: res => { successCallback(res, resolve, reject) },
+      fail: res => { failCallback(res, resolve, reject) },
+      complete: () => { completeCallback() },
     })
+
+    // 请求任务
+    if (config.task) {
+      getAdapterTask(requestTask, config.task)
+    }
+  })
+}
+
+// 获取请求适配器调用成功、失败、完成后的回调事件
+function getAdapterCallback(event) {
+  if (event === 'complete') {
+    return noop
+  }
+  return function(res, resolve, reject) {
+    if (event === 'success') {
+      resolve(res)
+    } else if (event === 'fail') {
+      reject(res)
+    }
+  }
+}
+
+/**
+ * 获取适配器任务处理
+ * @param {Object} requestTask 请求任务对象
+ * @param {Object} configTask 配置任务对象
+ */
+function getAdapterTask(requestTask, configTask) {
+  if (!requestTask) {
+    return undefined
+  }
+
+  if (!utils.isPlainObject(configTask)) {
+    configTask = {}
+  }
+
+  // abort 属于 wx.request\wx.uploadFile\wx.downloadFile 任务对象
+  // close\send 属于 wx.connectSocket 任务对象
+  const legalTasks = ['abort', 'close', 'send']
+  // onProgressUpdate\offProgressUpdate 属于 wx.uploadFile\wx.downloadFile 任务对象回调
+  // onHeadersReceived\offHeadersReceived 属于 wx.request\wx.uploadFile\wx.downloadFile 任务对象回调
+  // onChunkReceived\offChunkReceived 属于 wx.request 任务对象回调
+  // onOpen\onMessage\onError\onClose 属于 wx.connectSocket 任务对象回调
+  const legalCallbackTasks = ['onProgressUpdate', 'offProgressUpdate', 'onHeadersReceived', 'offHeadersReceived', 'onChunkReceived', 'offChunkReceived', 'onOpen', 'onMessage', 'onError', 'onClose']
+
+  utils.each(configTask, function setRequestTask(value, key) {
+    if (utils.isFunction(value)) {
+      if (legalCallbackTasks.includes(key)) {
+        requestTask[key](function requestTaskCallback(res) {
+          configTask[key] && configTask[key](res, requestTask)
+        })
+      } else {
+        configTask[key](requestTask)
+      }
+    }
   })
 }
 
@@ -627,16 +797,20 @@ function getDefaultAdapter(config) {
 
   let adapter
   let adapterName
-  // 使用 wx.uploadFile\wx.downloadFile\wx.request 特有的参数字段进行判断
-  // 如果config有name及filePath属性，则认为当前使用了 wx.uploadFile 接口
-  // 如果config只有filePath属性，则认为当前使用了 wx.downloadFile 接口
-  // 如果config没有name及filePath属性，则认为当前使用了 wx.request 接口
+  // 使用 wx.uploadFile\wx.downloadFile\wx.connectSocket 特有的参数字段进行判断
+  // 如果config有 name、filePath 属性，则认为当前使用了 wx.uploadFile 接口
+  // 如果config只有 filePath 属性，则认为当前使用了 wx.downloadFile 接口
+  // 如果config只有 protocols 属性，则认为当前使用了 wx.connectSocket 接口
+  // 如果config没有 name、filePath、protocols 属性，则认为当前使用了 wx.request 接口
   if (config.name && config.filePath) {
     adapter = uploadFileAdapter
     adapterName = 'wx.uploadFile'
   } else if (!config.name && objProto.hasOwnProperty.call(config, 'filePath')) {
     adapter = downloadFileAdapter
     adapterName = 'wx.downloadFile'
+  } else if (objProto.hasOwnProperty.call(config, 'protocols')) {
+    adapter = connectSocketAdapter
+    adapterName = 'wx.connectSocket'
   } else {
     adapter = requestAdapter
     adapterName = 'wx.request'
@@ -897,10 +1071,10 @@ utils.each(methods, function axiosRequestMethod(method) {
  *
  * @example
  *
- * axios.upload('www.abc.com', 'filePath', 'name', {})
- * axios.upload({ url: 'www.abc.com', filePath: 'filePath', name: 'name' })
+ * axios.uploadFile('www.abc.com', 'filePath', 'name', {...config})
+ * axios.uploadFile({ url: 'www.abc.com', filePath: 'filePath', name: 'name', ...config })
  */
-Axios.prototype.upload = function(url, filePath, name, config) {
+Axios.prototype.uploadFile = function(url, filePath, name, config) {
   // 兼容参数类型
   const args = arrProto.slice.call(arguments)
   let index = -1
@@ -950,10 +1124,10 @@ Axios.prototype.upload = function(url, filePath, name, config) {
  *
  * @example
  *
- * axios.download('www.abc.com')
- * axios.download({ url: 'www.abc.com' })
+ * axios.downloadFile('www.abc.com', {...config})
+ * axios.downloadFile({ url: 'www.abc.com', ...config })
  */
-Axios.prototype.download = function(url, config) {
+Axios.prototype.downloadFile = function(url, config) {
   // 兼容参数类型
   if (utils.isPlainObject(url) && !config) {
     config = url
@@ -964,6 +1138,30 @@ Axios.prototype.download = function(url, config) {
     method: 'GET',
     url: url,
     filePath: ((config || {}).filePath) || ''
+  }))
+}
+
+/**
+ * wx.connectSocket 请求别名
+ *
+ * @param {*} url 请求地址
+ * @param {*} config 配置对象
+ *
+ * @example
+ *
+ * axios.connectSocket('www.abc.com', {...config})
+ * axios.connectSocket({ url: 'www.abc.com', ...config })
+ */
+Axios.prototype.connectSocket = function(url, config) {
+  // 兼容参数类型
+  if (utils.isPlainObject(url) && !config) {
+    config = url
+    url = config.url || ''
+  }
+
+  return this.request(helpers.mergeConfig(config || {}, {
+    url: url,
+    protocols: ((config || {}).protocols) || ''
   }))
 }
 
@@ -1073,96 +1271,7 @@ function createInstance(defaultConfig) {
   return instance
 }
 
-// 测试代码
-
 let axios = createInstance(defaults)
-let axios1 = createInstance(defaults)
-let axios2 = axios.create({
-  useSingleton: false,
-  baseURL: 'https://api.wmdb.tv/api/v1/',
-  auth: {
-
-  },
-  token: '',
-})
-console.log('axios', axios2, axios === axios1, axios === axios2)
-
-axios2.interceptors.request.use(function (config) {
-  // 在发送请求之前做些什么
-  console.log('请求被拦截了111')
-  return config;
-}, function (error) {
-  // 对请求错误做些什么
-  return Promise.reject(error);
-})
-
-axios2.interceptors.response.use(function (response) {
-  // 对响应数据做点什么
-  console.log('响应被拦截了222')
-  return response;
-}, function (error) {
-  // 对响应错误做点什么
-  return Promise.reject(error);
-})
-
-// axios2.request({
-//   useSingleton: false,
-//   params: {
-//     type: 'Imdb',
-//     skip: 1,
-//     limit: 10,
-//     lang: 'Cn',
-//     page: 2
-//   },
-//   url: '/top',
-//   baseURL: 'https://api.wmdb.tv/api/v1/',
-//   token: '',
-//   data: {},
-//   method: 'get'
-// }).then((res) => {
-//   console.log('request请求1', res)
-// })
-
-// axios2.post('/top', {
-//   'a': 1,
-//   'b': 2,
-// }, {
-//   useSingleton: false,
-//   params: {
-//     type: 'Imdb',
-//     skip: 1,
-//     limit: 10,
-//     lang: 'Cn',
-//     page: 2
-//   },
-//   baseURL: 'https://api.wmdb.tv/api/v1/',
-//   token: '',
-//   method: 'get',
-//   data: {
-//     a: 1,
-//     b: 2,
-//   },
-//   filePath: '',
-// }).then((res) => {
-//   console.log('request请求2', res)
-// })
-
-axios2.download({ url: '/top', params: {
-  type: 'Imdb',
-  skip: 1,
-  limit: 10,
-  lang: 'Cn',
-  page: 2
-}})
-
-// axios2.upload({ url: '/top', params: {
-//   type: 'Imdb',
-//   skip: 1,
-//   limit: 10,
-//   lang: 'Cn',
-//   page: 2
-// }, name:'111', filePath: '222'})
-
 
 // 暴露Axios类，提供类继承等功能
 axios.Axios = Axios
