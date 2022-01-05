@@ -127,6 +127,11 @@ const DEFAULT_HEADER = {
   'content-type': 'application/json'
 }
 
+// 日志最大保存天数
+const MAX_LOG_DAY = 7
+// 日志最大保存数量
+const MAX_LOG_COUNTS = 300
+
 // 公共工具函数
 const utils = {
   /**
@@ -189,16 +194,6 @@ const utils = {
    */
   isFunction: function isFunction(value) {
     return typeof value === 'function'
-  },
-
-  /**
-   * 验证 HTTP 状态码
-   *
-   * @param {Number} statusCode 状态码
-   * @returns {Boolean} true or false
-   */
-  validateStatusCode: function validateStatusCode(statusCode) {
-    return statusCode >= 200 && statusCode < 300
   },
 
   /**
@@ -337,34 +332,7 @@ const helpers = {
    * @returns {Object} config 合并后的配置对象
    */
   mergeConfig: function mergeConfig(config1, config2) {
-    const config = utils.merge(config1, config2)
-    return config
-  },
-
-  /**
-   * 获得接口认证方式
-   *
-   * @param {Object} config 配置对象
-   * @returns {String} 返回认证方式
-   */
-  getAuthorization: function getAuthorization(config) {
-    if (!config) return ''
-
-    let authorization = ''
-
-    // 处理 HTTP Basic Auth
-    if (config.auth) {
-      const username = config.auth.username || ''
-      const password = config.auth.password ? unescape(encodeURIComponent(config.auth.password)) : ''
-      authorization = 'Basic ' + utils.base64Encode(username + ':' + password)
-    }
-
-    // 处理 HTTP Bearer Token
-    if (config.token) {
-      authorization = 'Bearer ' + config.token
-    }
-
-    return authorization
+    return utils.merge(config1, config2)
   },
 
   /**
@@ -446,27 +414,6 @@ const helpers = {
             ? url
             : helpers.combineURLs(baseURL, url)
   },
-
-  // 打印已完成的请求
-  printFulfilledRequest: function printFulfilledRequest(config, response) {
-    if (!config) return undefined
-
-    const print = console.log
-    print('%c↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓', 'color: #67c23a')
-    if (response && response.statusCode && !utils.validateStatusCode(response.statusCode)) {
-      print(`%cstatusCode：${response.statusCode}`, 'color: #fa5151;font-size:21px;')
-    }
-    print('=> 请求路径：', config.url || config.baseURL)
-    if (config.method) {
-      print('=> 请求方式：', config.method)
-    }
-    if (Object.keys(config.data).length > 0) {
-      print('=> 请求参数：', config.data || {})
-    }
-    print('=> 响应结果：', response || {})
-    print('=> 请求时间：', new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString())
-    print('%c↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑', 'color: #67c23a')
-  },
 }
 
 /** 拦截器 */
@@ -525,37 +472,26 @@ InterceptorManager.prototype.forEach = function forEach(fn) {
  * wx.request请求适配器
  *
  * @param {Object} config 配置对象
+ * @returns Promise对象
  */
 function requestAdapter(config) {
   config = config || {}
 
   return new Promise(function dispatchWXRequest(resolve, reject) {
-    const requestData = config.data || {}
-    const requestHeader = config.header || {}
-
-    const request = wx.request
-
     // 路径、Authorization不同适配器会有部分差异，
     // 不在dispatchRequest函数中进行处理
 
-    // 构建完整路径
-    let fullPath = config.baseURL
-    if (config.params && config.url) {
-      config.url = helpers.buildPathParam(config.url, config.params)
-    }
-    if (config.url) {
-       fullPath = helpers.buildFullPath(config.baseURL, config.url)
-    }
+    // 设置完整路径
+    const fullPath = setFullPathCommond(config)
 
-    // 进行接口认证
-    if (config.auth || config.token) {
-      requestHeader.Authorization = helpers.getAuthorization(config)
-    }
+    // 设置接口权限认证
+    const requestHeader = setAuthorizationCommond(config)
 
     // 发起请求
+    const request = wx.request
     const requestTask = request({
       url: fullPath,
-      data: requestData.data,
+      data: config.data || {},
       dataType: config.dataType,
       header: requestHeader,
       method: config.method,
@@ -571,7 +507,7 @@ function requestAdapter(config) {
 
     // 请求任务
     if (config.task) {
-      getAdapterTask(requestTask, config.task)
+      adapterTaskSettle(requestTask, config.task, config)
     }
   })
 }
@@ -580,28 +516,17 @@ function requestAdapter(config) {
  * wx.uploadFile 请求适配器
  *
  * @param {Object} config 配置对象
+ * @returns Promise对象
  */
 function uploadFileAdapter(config) {
   config = config || {}
 
   return new Promise(function dispatchWXUploadFile(resolve, reject) {
-    const requestHeader = config.header || {}
+    // 设置完整路径
+    const fullPath = setFullPathCommond(config)
 
-    const request = wx.uploadFile
-
-    // 构建完整路径
-    let fullPath = config.baseURL
-    if (config.params && config.url) {
-      config.url = helpers.buildPathParam(config.url, config.params)
-    }
-    if (config.url) {
-       fullPath = helpers.buildFullPath(config.baseURL, config.url)
-    }
-
-    // 进行接口认证
-    if (config.auth || config.token) {
-      requestHeader.Authorization = helpers.getAuthorization(config)
-    }
+    // 设置接口权限认证
+    const requestHeader = setAuthorizationCommond(config)
 
     // wx.uploadFile 的 content-type 必须为 multipart/form-data
     requestHeader['content-type'] = 'multipart/form-data'
@@ -611,6 +536,7 @@ function uploadFileAdapter(config) {
     }
 
     // 发起请求
+    const request = wx.uploadFile
     const requestTask = request({
       method: 'POST',
       url: fullPath,
@@ -625,7 +551,7 @@ function uploadFileAdapter(config) {
 
     // 请求任务
     if (config.task) {
-      getAdapterTask(requestTask, config.task)
+      adapterTaskSettle(requestTask, config.task, config)
     }
   })
 }
@@ -634,30 +560,20 @@ function uploadFileAdapter(config) {
  * wx.downloadFile 请求适配器
  *
  * @param {Object} config 配置对象
+ * @returns Promise对象
  */
 function downloadFileAdapter(config) {
   config = config || {}
 
   return new Promise(function dispatchWXDownloadFile(resolve, reject) {
-    const requestHeader = config.header || {}
+    // 设置完整路径
+    const fullPath = setFullPathCommond(config)
 
-    const request = wx.downloadFile
-
-    // 构建完整路径
-    let fullPath = config.baseURL
-    if (config.params && config.url) {
-      config.url = helpers.buildPathParam(config.url, config.params)
-    }
-    if (config.url) {
-       fullPath = helpers.buildFullPath(config.baseURL, config.url)
-    }
-
-    // 进行接口认证
-    if (config.auth || config.token) {
-      requestHeader.Authorization = helpers.getAuthorization(config)
-    }
+    // 设置接口权限认证
+    const requestHeader = setAuthorizationCommond(config)
 
     // 发起请求
+    const request = wx.downloadFile
     const requestTask = request({
       method: 'GET',
       url: fullPath,
@@ -671,7 +587,7 @@ function downloadFileAdapter(config) {
 
     // 请求任务
     if (config.task) {
-      getAdapterTask(requestTask, config.task)
+      adapterTaskSettle(requestTask, config.task, config)
     }
   })
 }
@@ -680,30 +596,20 @@ function downloadFileAdapter(config) {
  * wx.connectSocket 请求适配器
  *
  * @param {Object} config 配置对象
+ * @returns Promise对象
  */
 function connectSocketAdapter(config) {
   config = config || {}
 
   return new Promise(function dispatchWXConnectSocket(resolve, reject) {
-    const requestHeader = config.header || {}
+    // 设置完整路径
+    const fullPath = setFullPathCommond(config)
 
-    const request = wx.connectSocket
-
-    // 构建完整路径
-    let fullPath = config.baseURL
-    if (config.params && config.url) {
-      config.url = helpers.buildPathParam(config.url, config.params)
-    }
-    if (config.url) {
-       fullPath = helpers.buildFullPath(config.baseURL, config.url)
-    }
-
-    // 进行接口认证
-    if (config.auth || config.token) {
-      requestHeader.Authorization = helpers.getAuthorization(config)
-    }
+    // 设置接口权限认证
+    const requestHeader = setAuthorizationCommond(config)
 
     // 发起请求
+    const request = wx.connectSocket
     const requestTask = request({
       url: fullPath,
       header: requestHeader,
@@ -718,30 +624,97 @@ function connectSocketAdapter(config) {
 
     // 请求任务
     if (config.task) {
-      getAdapterTask(requestTask, config.task)
+      adapterTaskSettle(requestTask, config.task, config)
     }
   })
 }
 
-// 获取请求适配器调用成功、失败、完成后的回调事件
+/**
+ * 适配器通用部分
+ *
+ * @param {Object} config 配置对象
+ */
+const CommonPartOfAdapter = {
+  // 设置完整路径
+  setFullPath: function setFullPath(config) {
+    let fullPath = config.baseURL
+    if (config.params && config.url) {
+      config.url = helpers.buildPathParam(config.url, config.params)
+    }
+    if (config.url) {
+      fullPath = helpers.buildFullPath(config.baseURL, config.url)
+    }
+    return fullPath
+  },
+  // 设置接口权限认证
+  setAuthorization: function setAuthorization(config) {
+    let requestHeader = config.header || {}
+    if (config.auth || config.token) {
+      const getAuthorization = function(config) {
+        let authorization = ''
+        // 处理 HTTP Basic Auth
+        if (config.auth) {
+          const username = config.auth.username || ''
+          const password = config.auth.password ? unescape(encodeURIComponent(config.auth.password)) : ''
+          authorization = 'Basic ' + utils.base64Encode(username + ':' + password)
+        }
+        // 处理 HTTP Bearer Token
+        if (config.token) {
+          authorization = 'Bearer ' + config.token
+        }
+        return authorization
+      }
+      requestHeader.Authorization = getAuthorization(config)
+    }
+    return requestHeader
+  },
+}
+const SetFullPathCommond = function SetFullPathCommond(receiver) {
+  return function () {
+    const args = arrProto.slice.call(arguments)
+    return receiver.setFullPath(...args)
+  }
+}
+let setFullPathCommond = SetFullPathCommond(CommonPartOfAdapter)
+
+const SetAuthorizationCommond = function SetAuthorizationCommond(receiver) {
+  return function () {
+    const args = arrProto.slice.call(arguments)
+    return receiver.setAuthorization(...args)
+  }
+}
+let setAuthorizationCommond = SetAuthorizationCommond(CommonPartOfAdapter)
+
+/**
+ * 请求适配器调用成功、失败、完成后的回调事件
+ */
 function adapterCallbackSettle() {
   arguments.length < 2
     ? noop()
-    : arrProto.shift.call(arguments).call(this, arrProto.shift.call(arguments))
+    : utils.isFunction(arguments[0])
+        ? arrProto.shift.call(arguments).call(this, arrProto.shift.call(arguments) || {})
+        : noop()
 }
 
 /**
- * 获取适配器任务处理
+ * 请求适配器任务处理
  * @param {Object} requestTask 请求任务对象
  * @param {Object} configTask 配置任务对象
+ * @param {Object} config 配置对象
  */
-function getAdapterTask(requestTask, configTask) {
+function adapterTaskSettle(requestTask, configTask, config) {
   if (!requestTask) {
     return undefined
   }
 
   if (!utils.isPlainObject(configTask)) {
     configTask = {}
+  }
+
+  function localPrint(c, k, r) {
+    if (c && c.openLocalPrinter) {
+      c.printManager.printTask(c, k, r)
+    }
   }
 
   // abort 属于 wx.request\wx.uploadFile\wx.downloadFile 任务对象
@@ -758,6 +731,7 @@ function getAdapterTask(requestTask, configTask) {
       if (legalCallbackTasks.includes(key)) {
         requestTask[key](function requestTaskCallback(res) {
           configTask[key].apply(this, [res, requestTask])
+          localPrint(config, key, res)
         })
       } else {
         configTask[key].call(this, requestTask)
@@ -821,37 +795,18 @@ const defaults = {
   // 响应数据强制转化为json格式
   forcedJSONParsing: true,
 
-  // 打印已完成的请求
-  printFulfilledRequest: !isRelease,
+  // 本地打印
+  openLocalPrinter: !isRelease,
+  printManager: !isRelease ? new PrintManager('log') : undefined,
 
-  // 本地日志记录
+  // 本地日志
   openLocalLogger: !isRelease,
   logManager: !isRelease ? new LogManager() : undefined,
 
-  // 返回的数据格式
-  dataType: 'json',
-
-  // 响应的数据类型 text/arraybuffer
-  responseType: 'text',
-
-  // 开启 http2
-  enableHttp2: false,
-
-  // 开启 quic
-  enableQuic: false,
-
-  // 开启 cache
-  enableCache: false,
-
-  // 是否开启 HttpDNS 服务。如开启，需要同时填入 httpDNSServiceId
-  // HttpDNS 用法详见 https://developers.weixin.qq.com/miniprogram/dev/framework/ability/HTTPDNS.html
-  enableHttpDNS: false,
-
-  // HttpDNS 服务商 Id
-  httpDNSServiceId: false,
-
-  // 开启 transfer-encoding chunked
-  enableChunked: false,
+  // 定义对于给定的HTTP 响应状态码是 resolve 或 reject  promise
+  validateStatus: function validateStatus(status) {
+    return status >= 200 && status < 300
+  }
 }
 
 // 根据请求方法设置默认header
@@ -860,17 +815,84 @@ utils.each(methods, function setMethodHeader(method){
 })
 
 
-/** 本地日志缓存 */
+/** 本地打印、日志缓存 */
 
+/**
+ * 打印管理
+ */
+function PrintManager(level) {
+  this.name = name
+  this.level = level || 'log'
+  this.print = root.console[this.level]
+}
+
+PrintManager.prototype.header = function head(color='#67c23a') {
+  this.print(`%c[${this.name}]↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓`, `color: ${color}`)
+}
+
+PrintManager.prototype.footer = function head(color='#67c23a') {
+  this.print('%c↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑', `color: ${color}`)
+}
+
+PrintManager.prototype.time = function time() {
+  return new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString()
+}
+
+// 打印请求
+PrintManager.prototype.printRequest = function printRequest(config, response) {
+  if (!config) {
+    return undefined
+  }
+
+  const { print } = this
+  this.header()
+  if (response && response.statusCode && !config.validateStatus(response.statusCode)) {
+    print(`%cstatusCode：${response.statusCode}`, 'color: #fa5151;font-size:21px;')
+  }
+  print('=> 请求路径：', config.url || config.baseURL)
+  if (config.method) {
+    print('=> 请求方式：', config.method)
+  }
+  print('=> 配置参数：', config || {})
+  if (Object.keys(config.data).length > 0) {
+    print('=> 请求参数：', config.data || {})
+  }
+  print('=> 响应结果：', response || {})
+  print('=> 打印时间：', this.time())
+  this.footer()
+}
+
+// 打印请求任务
+PrintManager.prototype.printTask = function printTask(config, key, response) {
+  if (!config || !key) {
+    return undefined
+  }
+
+  const { print } = this
+  this.header('#e6a23c')
+  print('=> 监听事件：', key)
+  print('=> 请求路径：', config.url || config.baseURL)
+  print('=> 配置参数：', config || {})
+  if (Object.keys(config.data).length > 0) {
+    print('=> 请求参数：', config.data || {})
+  }
+  print('=> 回调结果：', response || {})
+  print('=> 打印时间：', this.time())
+  this.footer('#e6a23c')
+}
+
+/**
+ * 日志管理
+ */
 function LogManager() {
-  this.name = name || 'Weapp-Axios'
+  this.name = name
 }
 
 LogManager.prototype.set = function set(config, response) {
   if (!config) return undefined
 
   let logs = this.get() || []
-  if (logs.length > 6) {
+  if (logs.length > MAX_LOG_DAY - 1) {
     logs = this.popleft()
   }
 
@@ -886,7 +908,7 @@ LogManager.prototype.set = function set(config, response) {
   })
   if (index !== -1) {
     logs[index].logs.push(finalValue)
-    if (logs[index].logs.length > 300) {
+    if (logs[index].logs.length > MAX_LOG_COUNTS) {
       logs[index].logs.shift()
     }
   } else {
@@ -1178,7 +1200,7 @@ function dispatchRequest(config) {
   config.adapterName = adapter.adapterName
   return adapter.adapter(config).then(function onAdapterResolve(response) {
     // 如果配置了forcedJSONParsing，响应data为JSON字符串时自动解析
-    if (utils.validateStatusCode(response.statusCode) && config.forcedJSONParsing) {
+    if (config.validateStatus(response.statusCode) && config.forcedJSONParsing) {
       const rawData = response.data
       if (utils.isString(rawData)) {
         try {
@@ -1192,11 +1214,11 @@ function dispatchRequest(config) {
     }
 
     // 如果配置了printFulfilledRequest，整个请求完成控制台打印出请求信息
-    if (config.printFulfilledRequest) {
-      helpers.printFulfilledRequest(config, response)
+    if (config.openLocalPrinter) {
+      config.printManager.printRequest(config, response)
     }
 
-    // 本地日志记录
+    // 本地日志
     if (config.openLocalLogger) {
       try {
         config.logManager.set(config, response)
@@ -1244,6 +1266,7 @@ function createInstance(defaultConfig) {
   if (!instance.create) {
     // Axios实例化语法糖
     instance.create = function create(instanceConfig) {
+      instanceConfig.useSingleton = false
       return createInstance(helpers.mergeConfig(defaultConfig, instanceConfig))
     }
   }
