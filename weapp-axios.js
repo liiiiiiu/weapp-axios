@@ -486,7 +486,9 @@ const adapterDecorator = function adapterDecorator(fn) {
     let index = -1
     let rets = Array.from({ length }, () => null) || []
     while (++index < length) {
-      rets[index] = decorators[index].apply(this, arguments)
+      rets[index] = utils.isFunction(decorators[index])
+                      ? decorators[index].apply(this, arguments)
+                      : undefined
     }
     return fn.apply(this, rets)
   }
@@ -502,7 +504,7 @@ function requestAdapter(config) {
   config = config || {}
 
   // 参数与adapterDecorator中调用的装饰器函数返回值一致
-  function setRequestAdapter(url, header) {
+  function sendRequest(url, header) {
     return new Promise(function sendWXRequest(resolve, reject) {
       // 发起请求
       const request = wx.request
@@ -531,7 +533,7 @@ function requestAdapter(config) {
 
   // 路径、Authorization不同适配器会有部分差异，不在dispatchRequest函数中进行处理
   // 使用装饰器将获得url路径、header.Authorization的逻辑与发起请求的逻辑进行分离
-  const requestAdapterHandler = adapterDecorator(setRequestAdapter, setFullPathURL, setAuthorizationHeader)
+  const requestAdapterHandler = adapterDecorator(sendRequest, setFullPathURL, setAuthorizationHeader)
 
   return requestAdapterHandler(config)
 }
@@ -549,7 +551,7 @@ function uploadFileAdapter(config) {
     throw Error(`[${name}] wx.uploadFile 需要传入 name filePath 属性！`)
   }
 
-  function setUploadFileAdapter(url, header) {
+  function sendRequest(url, header) {
     return new Promise(function sendWXUploadFile(resolve, reject) {
       // wx.uploadFile 的 content-type 必须为 multipart/form-data
       header['content-type'] = 'multipart/form-data'
@@ -573,7 +575,7 @@ function uploadFileAdapter(config) {
     })
   }
 
-  const uploadFileAdapterHandler = adapterDecorator(setUploadFileAdapter, setFullPathURL, setAuthorizationHeader)
+  const uploadFileAdapterHandler = adapterDecorator(sendRequest, setFullPathURL, setAuthorizationHeader)
 
   return uploadFileAdapterHandler(config)
 }
@@ -587,7 +589,7 @@ function uploadFileAdapter(config) {
 function downloadFileAdapter(config) {
   config = config || {}
 
-  function setDownloadFileAdapter(url, header) {
+  function sendRequest(url, header) {
     return new Promise(function sendWXDownloadFile(resolve, reject) {
       // 发起请求
       const request = wx.downloadFile
@@ -608,7 +610,7 @@ function downloadFileAdapter(config) {
     })
   }
 
-  const downloadFileAdapterHandler = adapterDecorator(setDownloadFileAdapter, setFullPathURL, setAuthorizationHeader)
+  const downloadFileAdapterHandler = adapterDecorator(sendRequest, setFullPathURL, setAuthorizationHeader)
 
   return downloadFileAdapterHandler(config)
 }
@@ -622,7 +624,7 @@ function downloadFileAdapter(config) {
 function connectSocketAdapter(config) {
   config = config || {}
 
-  function setConnectSocketAdapter(url, header) {
+  function sendRequest(url, header) {
     return new Promise(function sendWXConnectSocket(resolve, reject) {
       // 发起请求
       const request = wx.connectSocket
@@ -644,7 +646,7 @@ function connectSocketAdapter(config) {
     })
   }
 
-  const connectSocketAdapterHandler = adapterDecorator(setConnectSocketAdapter, setFullPathURL, setAuthorizationHeader)
+  const connectSocketAdapterHandler = adapterDecorator(sendRequest, setFullPathURL, setAuthorizationHeader)
 
   return connectSocketAdapterHandler(config)
 }
