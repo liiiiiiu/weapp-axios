@@ -469,6 +469,30 @@ InterceptorManager.prototype.forEach = function forEach(fn) {
 /** 适配器 */
 
 /**
+ * 给发起请求的适配器打上装饰函数
+ * 
+ * @param {Function} fn 需要装饰的函数
+ * @returns Function
+ */
+const adapterDecorator = function adapterDecorator(fn) {
+  if (!utils.isFunction(fn)) {
+    throw Error(`[${name}] adapterDecorator 必须传入函数类型参数！`)
+  }
+
+  const decorators = arrProto.slice.call(arguments, 1)
+
+  return function adapterDecoratorFn() {
+    let { length } = decorators
+    let index = -1
+    let rets = Array.from({ length }, () => null) || []
+    while (++index < length) {
+      rets[index] = decorators[index].apply(this, arguments)
+    }
+    return fn.apply(this, rets)
+  }
+}
+
+/**
  * wx.request请求适配器
  *
  * @param {Object} config 配置对象
@@ -477,39 +501,39 @@ InterceptorManager.prototype.forEach = function forEach(fn) {
 function requestAdapter(config) {
   config = config || {}
 
-  return new Promise(function dispatchWXRequest(resolve, reject) {
-    // 路径、Authorization不同适配器会有部分差异，
-    // 不在dispatchRequest函数中进行处理
-
-    // 设置完整路径
-    const fullPath = setFullPathCommond(config)
-
-    // 设置接口权限认证
-    const requestHeader = setAuthorizationCommond(config)
-
-    // 发起请求
-    const request = wx.request
-    const requestTask = request({
-      url: fullPath,
-      data: config.data || {},
-      dataType: config.dataType,
-      header: requestHeader,
-      method: config.method,
-      responseType: config.responseType,
-      timeout: config.timeout,
-      enableCache: config.enableCache,
-      enableHttp2: config.enableHttp2,
-      enableQuic: config.enableQuic,
-      success: res => { adapterCallbackSettle(resolve, res) },
-      fail: err => { adapterCallbackSettle(reject, err) },
-      complete: () => { adapterCallbackSettle() },
+  // 参数与adapterDecorator中调用的装饰器函数返回值一致
+  function setRequestAdapter(url, header) {
+    return new Promise(function sendWXRequest(resolve, reject) {
+      // 发起请求
+      const request = wx.request
+      const requestTask = request({
+        url,
+        header,
+        data: config.data || {},
+        dataType: config.dataType,
+        method: config.method,
+        responseType: config.responseType,
+        timeout: config.timeout,
+        enableCache: config.enableCache,
+        enableHttp2: config.enableHttp2,
+        enableQuic: config.enableQuic,
+        success: res => { adapterCallbackSettle(resolve, res) },
+        fail: err => { adapterCallbackSettle(reject, err) },
+        complete: () => { adapterCallbackSettle() },
+      })
+      // 请求任务
+      // https://developers.weixin.qq.com/miniprogram/dev/api/network/request/RequestTask.html
+      if (config.task) {
+        adapterTaskSettle(requestTask, config.task, config)
+      }
     })
+  }
 
-    // 请求任务
-    if (config.task) {
-      adapterTaskSettle(requestTask, config.task, config)
-    }
-  })
+  // 路径、Authorization不同适配器会有部分差异，不在dispatchRequest函数中进行处理
+  // 使用装饰器将获得url路径、header.Authorization的逻辑与发起请求的逻辑进行分离
+  const requestAdapterHandler = adapterDecorator(setRequestAdapter, setFullPathURL, setAuthorizationHeader)
+
+  return requestAdapterHandler(config)
 }
 
 /**
@@ -521,39 +545,37 @@ function requestAdapter(config) {
 function uploadFileAdapter(config) {
   config = config || {}
 
-  return new Promise(function dispatchWXUploadFile(resolve, reject) {
-    // 设置完整路径
-    const fullPath = setFullPathCommond(config)
+  if (!config.name || !config.filePath) {
+    throw Error(`[${name}] wx.uploadFile 需要传入 name filePath 属性！`)
+  }
 
-    // 设置接口权限认证
-    const requestHeader = setAuthorizationCommond(config)
-
-    // wx.uploadFile 的 content-type 必须为 multipart/form-data
-    requestHeader['content-type'] = 'multipart/form-data'
-
-    if (!config.name || !config.filePath) {
-      throw Error(`[${name}] wx.uploadFile 需要传入 name filePath 属性！`)
-    }
-
-    // 发起请求
-    const request = wx.uploadFile
-    const requestTask = request({
-      method: 'POST',
-      url: fullPath,
-      name: config.name,
-      filePath: config.filePath,
-      header: requestHeader,
-      timeout: config.timeout,
-      success: res => { adapterCallbackSettle(resolve, res) },
-      fail: err => { adapterCallbackSettle(reject, err) },
-      complete: () => { adapterCallbackSettle() },
+  function setUploadFileAdapter(url, header) {
+    return new Promise(function sendWXUploadFile(resolve, reject) {
+      // wx.uploadFile 的 content-type 必须为 multipart/form-data
+      header['content-type'] = 'multipart/form-data'
+      // 发起请求
+      const request = wx.uploadFile
+      const requestTask = request({
+        method: 'POST',
+        url,
+        header,
+        name: config.name,
+        filePath: config.filePath,
+        timeout: config.timeout,
+        success: res => { adapterCallbackSettle(resolve, res) },
+        fail: err => { adapterCallbackSettle(reject, err) },
+        complete: () => { adapterCallbackSettle() },
+      })
+      // 请求任务
+      if (config.task) {
+        adapterTaskSettle(requestTask, config.task, config)
+      }
     })
+  }
 
-    // 请求任务
-    if (config.task) {
-      adapterTaskSettle(requestTask, config.task, config)
-    }
-  })
+  const uploadFileAdapterHandler = adapterDecorator(setUploadFileAdapter, setFullPathURL, setAuthorizationHeader)
+
+  return uploadFileAdapterHandler(config)
 }
 
 /**
@@ -565,31 +587,30 @@ function uploadFileAdapter(config) {
 function downloadFileAdapter(config) {
   config = config || {}
 
-  return new Promise(function dispatchWXDownloadFile(resolve, reject) {
-    // 设置完整路径
-    const fullPath = setFullPathCommond(config)
-
-    // 设置接口权限认证
-    const requestHeader = setAuthorizationCommond(config)
-
-    // 发起请求
-    const request = wx.downloadFile
-    const requestTask = request({
-      method: 'GET',
-      url: fullPath,
-      filePath: config.filePath || '',
-      header: requestHeader,
-      timeout: config.timeout,
-      success: res => { adapterCallbackSettle(resolve, res) },
-      fail: err => { adapterCallbackSettle(reject, err) },
-      complete: () => { adapterCallbackSettle() },
+  function setDownloadFileAdapter(url, header) {
+    return new Promise(function sendWXDownloadFile(resolve, reject) {
+      // 发起请求
+      const request = wx.downloadFile
+      const requestTask = request({
+        method: 'GET',
+        url,
+        header,
+        filePath: config.filePath || '',
+        timeout: config.timeout,
+        success: res => { adapterCallbackSettle(resolve, res) },
+        fail: err => { adapterCallbackSettle(reject, err) },
+        complete: () => { adapterCallbackSettle() },
+      })
+      // 请求任务
+      if (config.task) {
+        adapterTaskSettle(requestTask, config.task, config)
+      }
     })
+  }
 
-    // 请求任务
-    if (config.task) {
-      adapterTaskSettle(requestTask, config.task, config)
-    }
-  })
+  const downloadFileAdapterHandler = adapterDecorator(setDownloadFileAdapter, setFullPathURL, setAuthorizationHeader)
+
+  return downloadFileAdapterHandler(config)
 }
 
 /**
@@ -601,89 +622,75 @@ function downloadFileAdapter(config) {
 function connectSocketAdapter(config) {
   config = config || {}
 
-  return new Promise(function dispatchWXConnectSocket(resolve, reject) {
-    // 设置完整路径
-    const fullPath = setFullPathCommond(config)
-
-    // 设置接口权限认证
-    const requestHeader = setAuthorizationCommond(config)
-
-    // 发起请求
-    const request = wx.connectSocket
-    const requestTask = request({
-      url: fullPath,
-      header: requestHeader,
-      protocols: config.protocols,
-      tcpNoDelay: config.tcpNoDelay || false,
-      perMessageDeflate: config.perMessageDeflate || false,
-      timeout: config.timeout,
-      success: res => { adapterCallbackSettle(resolve, res) },
-      fail: err => { adapterCallbackSettle(reject, err) },
-      complete: () => { adapterCallbackSettle() },
+  function setConnectSocketAdapter(url, header) {
+    return new Promise(function sendWXConnectSocket(resolve, reject) {
+      // 发起请求
+      const request = wx.connectSocket
+      const requestTask = request({
+        url,
+        header,
+        protocols: config.protocols,
+        tcpNoDelay: config.tcpNoDelay || false,
+        perMessageDeflate: config.perMessageDeflate || false,
+        timeout: config.timeout,
+        success: res => { adapterCallbackSettle(resolve, res) },
+        fail: err => { adapterCallbackSettle(reject, err) },
+        complete: () => { adapterCallbackSettle() },
+      })
+      // 请求任务
+      if (config.task) {
+        adapterTaskSettle(requestTask, config.task, config)
+      }
     })
+  }
 
-    // 请求任务
-    if (config.task) {
-      adapterTaskSettle(requestTask, config.task, config)
-    }
-  })
+  const connectSocketAdapterHandler = adapterDecorator(setConnectSocketAdapter, setFullPathURL, setAuthorizationHeader)
+
+  return connectSocketAdapterHandler(config)
 }
 
 /**
- * 适配器通用部分
+ * 设置 URL 完整路径
  *
  * @param {Object} config 配置对象
  */
-const CommonPartOfAdapter = {
-  // 设置完整路径
-  setFullPath: function setFullPath(config) {
-    let fullPath = config.baseURL
-    if (config.params && config.url) {
-      config.url = helpers.buildPathParam(config.url, config.params)
-    }
-    if (config.url) {
-      fullPath = helpers.buildFullPath(config.baseURL, config.url)
-    }
-    return fullPath
-  },
-  // 设置接口权限认证
-  setAuthorization: function setAuthorization(config) {
-    let requestHeader = config.header || {}
-    if (config.auth || config.token) {
-      const getAuthorization = function(config) {
-        let authorization = ''
-        // 处理 HTTP Basic Auth
-        if (config.auth) {
-          const username = config.auth.username || ''
-          const password = config.auth.password ? unescape(encodeURIComponent(config.auth.password)) : ''
-          authorization = 'Basic ' + utils.base64Encode(username + ':' + password)
-        }
-        // 处理 HTTP Bearer Token
-        if (config.token) {
-          authorization = 'Bearer ' + config.token
-        }
-        return authorization
-      }
-      requestHeader.Authorization = getAuthorization(config)
-    }
-    return requestHeader
-  },
-}
-const SetFullPathCommond = function SetFullPathCommond(receiver) {
-  return function () {
-    const args = arrProto.slice.call(arguments)
-    return receiver.setFullPath(...args)
+function setFullPathURL(config) {
+  let fullPath = config.baseURL
+  if (config.params && config.url) {
+    config.url = helpers.buildPathParam(config.url, config.params)
   }
+  if (config.url) {
+    fullPath = helpers.buildFullPath(config.baseURL, config.url)
+  }
+  return fullPath
 }
-let setFullPathCommond = SetFullPathCommond(CommonPartOfAdapter)
 
-const SetAuthorizationCommond = function SetAuthorizationCommond(receiver) {
-  return function () {
-    const args = arrProto.slice.call(arguments)
-    return receiver.setAuthorization(...args)
+/**
+ * 设置 header.Authorization 参数
+ *
+ * @param {Object} config 配置对象
+ */
+function setAuthorizationHeader(config) {
+  let requestHeader = config.header || {}
+  if (config.auth || config.token) {
+    const getAuthorization = function(config) {
+      let authorization = ''
+      // 处理 HTTP Basic Auth
+      if (config.auth) {
+        const username = config.auth.username || ''
+        const password = config.auth.password ? unescape(encodeURIComponent(config.auth.password)) : ''
+        authorization = 'Basic ' + utils.base64Encode(username + ':' + password)
+      }
+      // 处理 HTTP Bearer Token
+      if (config.token) {
+        authorization = 'Bearer ' + config.token
+      }
+      return authorization
+    }
+    requestHeader.Authorization = getAuthorization(config)
   }
+  return requestHeader
 }
-let setAuthorizationCommond = SetAuthorizationCommond(CommonPartOfAdapter)
 
 /**
  * 请求适配器调用成功、失败、完成后的回调事件
