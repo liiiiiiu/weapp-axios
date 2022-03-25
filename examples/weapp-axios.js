@@ -1048,7 +1048,7 @@ Axios.prototype.request = function request(config) {
 
   // 循环处理响应拦截
   while (responseInterceptors.length) {
-    promise.then(responseInterceptors.shift(), responseInterceptors.shift())
+    promise = promise.then(responseInterceptors.shift(), responseInterceptors.shift())
   }
 
   return promise
