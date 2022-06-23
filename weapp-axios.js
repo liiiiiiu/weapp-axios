@@ -1,8 +1,7 @@
 /*!
- * Name: Weapp-Axios
+ * Name: Weapp Axios
  * Version: v1.0.0
- * Description: 微信小程序requestAPI的封装
- * Author: Liu Jiachang
+ * Author: liujiachang
  *
  * wx.request API
  * https://developers.weixin.qq.com/miniprogram/dev/api/network/request/wx.request.html
@@ -15,78 +14,6 @@
  *
  * Axios API
  * http://www.axios-js.com/zh-cn/docs/#axios
- */
-
-/**
- * @example
- *
- * 向axios传递相关配置来创建请求
- * axios(config)
- *
- * 发起 wx.request 请求（默认为GET请求）
- *
- * axios('/user/12345')
- * axios({ method: 'post', url: '/user/12345', data: { firstName: 'Fred' } })
- *
- * 使用别名
- * axios.request(config)
- * axios.get(url[, data[, config]])
- * axios.delete(url[, data[, config]])
- * axios.head(url[, data[, config]])
- * axios.options(url[, data[, config]])
- * axios.post(url[, data[, config]])
- * axios.put(url[, data[, config]])
- * axios.patch(url[, data[, config]])
- *
- * 发起 wx.uploadFile 请求
- *
- * 传入 name 以及 filePath 参数会自动发起 wx.uploadFile 请求
- * axios({ url: 'www.abc.com', name: 'name', filePath: 'filePath' })
- *
- * 使用别名
- * axios.uploadFile('www.abc.com', 'filePath', 'name', {...config})
- * axios.uploadFile({ url: 'www.abc.com', filePath: 'filePath', name: 'name', ...config })
- *
- * 发起 wx.downloadFile 请求
- *
- * 传入 filePath 参数会自动发起 wx.downloadFile 请求（wx.downloadFile中的 filePath 为非必填项，可传入空值）
- * axios({ url: 'www.abc.com', filePath: '' })
- *
- * 使用别名
- * axios.downloadFile('www.abc.com', 'filePath', 'name', {...config})
- * axios.downloadFile({ url: 'www.abc.com', filePath: 'filePath', name: 'name', ...config })
- * 
- * 发起 wx.connectSocket 请求
- * axios.connectSocket('www.abc.com', {...config})
- * axios.connectSocket({ url: 'www.abc.com', ...config })
- * 
- * 
- * 处理 Task 任务对象
- * wx.request\wx.uploadFile\wx.downloadFile\wx.connectSocket 拥有相同的处理方法
- * 在 config 内传入包含官方文档内合法Task方法的 task 对象
- * 
- * axios.downloadFile({
- *  url: 'www.abc.com',
- *  task: {
- *    // task对象键值命名必须与官方文档Task提供的函数名一致
- *    onProgressUpdate: (res, task) => {
- *      // 使用自定义函数接收参数
- *      yourOnProgressUpdateFun(res, task)
- *    },
- *    offProgressUpdate: (res, task) => {
- *      yourOffProgressUpdateFunc(res, task)
- *    },
- *    // 如果不是on监听事件的回调函数，axios传入的是task对象
- *    abort: task => {
- *      yourAbortFunc(task)
- *    },
- *  },
- * });
- * function yourAbortFunc(task) {
- *  if (true) {
- *    task.abort()
- *  }
- * }
  */
 
 const name = 'Weapp-Axios'
@@ -470,7 +397,7 @@ InterceptorManager.prototype.forEach = function forEach(fn) {
 
 /**
  * 给发起请求的适配器打上装饰函数
- * 
+ *
  * @param {Function} fn 需要装饰的函数
  * @returns Function
  */
@@ -1261,7 +1188,7 @@ const ProxyAxios = (function proxyAxios() {
 /**
  * 实例化Axios
  *
- * @param {Object} defaultConfig 
+ * @param {Object} defaultConfig
  * @returns {Object} instance
  */
 function createInstance(defaultConfig) {
