@@ -1,6 +1,6 @@
 {
   "name": "weapp-axios",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Weapp Axios 参考了 Axios，用于微信小程序发起网络请求。",
   "main": "weapp-axios.js",
   "directories": {
