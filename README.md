@@ -1,6 +1,6 @@
 # Weapp Axios
 
-**Weapp Axios 参考了 Axios，用于微信小程序发起网络请求的封装。**
+**Weapp Axios 参考了 Axios，用于微信小程序发起网络请求。**
 
 [Axios 官方文档](http://www.axios-js.com/zh-cn/docs/#axios)
 
