@@ -4,9 +4,17 @@
 
 [Axios 官方文档](http://www.axios-js.com/zh-cn/docs/#axios)
 
+## 安装
+
+```bash
+npm i weapp-axios --save
+```
+
 ## 发起 wx.request 请求（默认为GET请求）
 
 ```javascript
+import axios from 'weapp-axios'
+
 axios('/user/12345')
 
 axios({ method: 'post', url: '/user/12345', data: { firstName: 'Fred' } })
