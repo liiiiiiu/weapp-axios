@@ -65,9 +65,9 @@ axios({ url: 'www.abc.com', filePath: '' })
 ### 使用别名
 
 ```javascript
-axios.downloadFile('www.abc.com', 'filePath', 'name', {...config})
+axios.downloadFile('www.abc.com', 'filePath', {...config})
 
-axios.downloadFile({ url: 'www.abc.com', filePath: 'filePath', name: 'name', ...config })
+axios.downloadFile({ url: 'www.abc.com', filePath: 'filePath', ...config })
 ```
 
 ## 发起 wx.connectSocket 请求
