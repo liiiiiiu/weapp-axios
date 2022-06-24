@@ -4,6 +4,14 @@
 
 [Axios 官方文档](http://www.axios-js.com/zh-cn/docs/#axios)
 
+## 特性
+
+- 支持 Promise API
+- 拦截请求和响应
+- 封装 wx.request\wx.uploadFile\wx.downloadFile\wx.connectSocket，一致的语法结构
+- 处理 Task 任务对象
+- 非 `release` 环境支持请求体的本地打印以及本地日志记录
+
 ## 安装
 
 ```bash
@@ -78,11 +86,34 @@ axios.connectSocket('www.abc.com', {...config})
 axios.connectSocket({ url: 'www.abc.com', ...config })
 ```
 
+## 拦截请求和响应
+
+```javascript
+axios.interceptors.request.use(function (config) {
+  // 在发送请求之前做些什么
+  console.log('请求被拦截了')
+  return config;
+}, function (error) {
+  // 对请求错误做些什么
+  return Promise.reject(error);
+})
+axios.interceptors.response.use(function (response) {
+  // 对响应数据做点什么
+  console.log('响应被拦截了')
+  return response;
+}, function (error) {
+  // 对响应错误做点什么
+  return Promise.reject(error);
+})
+```
+
 ## 处理 Task 任务对象
 
 wx.request\wx.uploadFile\wx.downloadFile\wx.connectSocket 拥有相同的处理方法。
 
-在 config 内传入包含 Axios 官方文档内合法Task方法的 task 对象。
+在 config 内传入合法Task方法的 task 对象。
+
+[RequestTask](https://developers.weixin.qq.com/miniprogram/dev/api/network/request/RequestTask.html)
 
 ```javascript
 axios.downloadFile({
@@ -110,6 +141,3 @@ function yourAbortFunc(task) {
 }
 ```
 
-## 新增特性
-
-非 `release` 环境支持**本地打印**以及**本地日志**记录。
